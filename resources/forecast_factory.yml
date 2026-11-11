@@ -1,0 +1,114 @@
+resources:
+  experiments:
+    forecast_factory_experiment:
+      name: ${workspace.root_path}/forecast_factory_experiment
+
+  jobs:
+    # One-time (and safe to re-run) setup: optional sample data, registry, output tables and metric views.
+    forecast_factory_setup:
+      name: Forecast Factory - setup
+      tags: {app: forecast-factory}
+      parameters:
+        - {name: catalog, default: "${var.catalog}"}
+        - {name: schema, default: "${var.schema}"}
+        - {name: table_prefix, default: "${var.table_prefix}"}
+      environments:
+        - environment_key: fc
+          spec: {client: "2"}
+      tasks:
+        - task_key: sample_data
+          environment_key: fc
+          notebook_task:
+            notebook_path: ../src/00_sample_data.py
+            base_parameters: {create_sample_data: "${var.create_sample_data}"}
+        - task_key: setup
+          depends_on: [{task_key: sample_data}]
+          environment_key: fc
+          notebook_task:
+            notebook_path: ../src/00_setup.py
+            base_parameters: {seed_sample_kpis: "${var.seed_sample_kpis}"}
+
+    # Child job: one KPI end to end. train -> evaluate_promote -> if_should_score -> score
+    forecast_factory_kpi_pipeline:
+      name: Forecast Factory - KPI pipeline
+      tags: {app: forecast-factory}
+      max_concurrent_runs: ${var.fanout_concurrency}
+      performance_target: PERFORMANCE_OPTIMIZED
+      parameters:
+        - {name: kpi_id, default: ""}
+        - {name: score_mode, default: "${var.score_mode}"}
+        - {name: catalog, default: "${var.catalog}"}
+        - {name: schema, default: "${var.schema}"}
+        - {name: table_prefix, default: "${var.table_prefix}"}
+        - {name: experiment_id, default: "${resources.experiments.forecast_factory_experiment.id}"}
+      environments: &fc_env
+        - environment_key: fc
+          spec:
+            client: "2"
+            dependencies: ["statsforecast>=2.0.0", "mlflow>=3", "pandas", "numpy"]
+      tasks:
+        - task_key: train
+          environment_key: fc
+          notebook_task: {notebook_path: ../src/01_train.py}
+        - task_key: evaluate_promote
+          depends_on: [{task_key: train}]
+          environment_key: fc
+          notebook_task: {notebook_path: ../src/02_evaluate_promote.py}
+        - task_key: if_should_score
+          depends_on: [{task_key: evaluate_promote}]
+          condition_task:
+            op: EQUAL_TO
+            left: "{{tasks.evaluate_promote.values.should_score}}"
+            right: "true"
+        - task_key: score
+          depends_on: [{task_key: if_should_score, outcome: "true"}]
+          environment_key: fc
+          notebook_task: {notebook_path: ../src/03_score.py}
+
+    # Parent job: read the registry, fan out one child run per active KPI, then roll up accuracy.
+    forecast_factory:
+      name: Forecast Factory
+      tags: {app: forecast-factory}
+      max_concurrent_runs: 1
+      performance_target: PERFORMANCE_OPTIMIZED
+      schedule:
+        quartz_cron_expression: "0 0 6 ? * MON"
+        timezone_id: America/Chicago
+        pause_status: ${var.schedule_pause_status}
+      parameters:
+        - {name: catalog, default: "${var.catalog}"}
+        - {name: schema, default: "${var.schema}"}
+        - {name: table_prefix, default: "${var.table_prefix}"}
+        - {name: experiment_id, default: "${resources.experiments.forecast_factory_experiment.id}"}
+      environments: *fc_env
+      tasks:
+        - task_key: load_registry
+          environment_key: fc
+          notebook_task: {notebook_path: ../src/load_registry.py}
+        - task_key: kpi_fanout
+          depends_on: [{task_key: load_registry}]
+          for_each_task:
+            inputs: "{{tasks.load_registry.values.kpi_ids}}"
+            concurrency: ${var.fanout_concurrency}
+            task:
+              task_key: kpi_pipeline
+              run_job_task:
+                job_id: ${resources.jobs.forecast_factory_kpi_pipeline.id}
+                job_parameters:
+                  kpi_id: "{{input}}"
+                  catalog: "{{job.parameters.catalog}}"
+                  schema: "{{job.parameters.schema}}"
+                  table_prefix: "{{job.parameters.table_prefix}}"
+                  experiment_id: "{{job.parameters.experiment_id}}"
+        - task_key: accuracy_rollup
+          depends_on: [{task_key: kpi_fanout}]
+          environment_key: fc
+          notebook_task: {notebook_path: ../src/04_accuracy.py}
+
+  dashboards:
+    forecast_factory_dashboard:
+      display_name: Forecast Factory
+      file_path: ../src/dashboards/forecast_factory.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      dataset_catalog: ${var.catalog}
+      dataset_schema: ${var.schema}

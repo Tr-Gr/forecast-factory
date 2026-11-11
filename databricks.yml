@@ -1,0 +1,79 @@
+# Forecast Factory: a config-driven framework to train, evaluate, promote, score and monitor many forecasting models.
+# Deploy:   databricks bundle deploy -t dev
+# Set up:   databricks bundle run -t dev forecast_factory_setup
+# Run:      databricks bundle run -t dev forecast_factory
+bundle:
+  name: forecast-factory
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog for the registry, outputs and models (must already exist)
+  schema:
+    description: Schema for the registry, outputs and models (created if missing)
+    default: forecast_factory
+  table_prefix:
+    description: Prefix for every table, view and model the framework creates
+    default: fc_
+  warehouse_id:
+    description: SQL warehouse ID for the dashboard
+  fanout_concurrency:
+    description: How many KPIs train at the same time
+    default: 5
+  create_sample_data:
+    description: Create synthetic sample source tables (turn off once your own KPIs are registered)
+    default: "true"
+  seed_sample_kpis:
+    description: Register the four example KPIs that point at the sample tables
+    default: "true"
+  score_mode:
+    description: forward (forecast the next horizon from the latest data) or holdout (score the evaluated window; useful for demos)
+    default: forward
+  schedule_pause_status:
+    description: PAUSED or UNPAUSED for the weekly schedule
+    default: PAUSED
+  service_principal_application_id:
+    description: Application ID of the service principal that runs staging and prod
+    default: ""
+
+targets:
+  # Personal development copy. Resources are prefixed with "[dev <you>]" and schedules are paused.
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://<your-dev-workspace>.azuredatabricks.net
+    variables:
+      catalog: <dev_catalog>
+      warehouse_id: <dev_warehouse_id>
+
+  # Shared pre-production copy, deployed by CI from the main branch.
+  staging:
+    mode: production
+    workspace:
+      host: https://<your-nonprod-workspace>.azuredatabricks.net
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      service_principal_name: ${var.service_principal_application_id}
+    variables:
+      catalog: <staging_catalog>
+      warehouse_id: <staging_warehouse_id>
+      create_sample_data: "false"
+      seed_sample_kpis: "false"
+
+  # Production. Models train here on production data ("deploy code, not models").
+  prod:
+    mode: production
+    workspace:
+      host: https://<your-prod-workspace>.azuredatabricks.net
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      service_principal_name: ${var.service_principal_application_id}
+    variables:
+      catalog: <prod_catalog>
+      warehouse_id: <prod_warehouse_id>
+      create_sample_data: "false"
+      seed_sample_kpis: "false"
+      schedule_pause_status: UNPAUSED

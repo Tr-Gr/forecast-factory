@@ -1,0 +1,35 @@
+# Deploy code, not models: the same code is promoted dev -> staging -> prod, and models train where the data lives.
+#   push to main        -> deploy to staging, then run the setup job (idempotent)
+#   manual (workflow_dispatch) with target=prod -> deploy to prod; protect the "prod" environment with required reviewers
+name: deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Target to deploy
+        required: true
+        default: prod
+        type: choice
+        options: [staging, prod]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'staging' }}
+    env:
+      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'staging' }}
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+      BUNDLE_VAR_service_principal_application_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+      - name: Validate
+        run: databricks bundle validate -t "$TARGET"
+      - name: Deploy
+        run: databricks bundle deploy -t "$TARGET"
+      - name: Set up tables and metric views (safe to re-run)
+        run: databricks bundle run -t "$TARGET" forecast_factory_setup

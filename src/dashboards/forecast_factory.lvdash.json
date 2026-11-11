@@ -1,0 +1,784 @@
+{
+ "datasets": [
+  {
+   "name": "ds_counters",
+   "displayName": "counters",
+   "queryLines": [
+    "SELECT (SELECT count(*) FROM fc_forecast_registry WHERE active) AS active_kpis,  (SELECT count(*) FROM fc_model_status WHERE champion_version IS NOT NULL) AS champion_models,  (SELECT sum(abs_error) / sum(y_actual) FROM fc_forecast_accuracy WHERE split = 'scored_vs_actual') AS scored_wape\n"
+   ]
+  },
+  {
+   "name": "ds_kpi_wape",
+   "displayName": "kpi wape",
+   "queryLines": [
+    "SELECT kpi_id, split, sum(abs_error) / nullif(sum(y_actual), 0) AS wape FROM fc_forecast_accuracy WHERE split IN ('backtest', 'holdout') GROUP BY kpi_id, split\n"
+   ]
+  },
+  {
+   "name": "ds_status",
+   "displayName": "model status",
+   "queryLines": [
+    "SELECT kpi_id, model_name, champion_version, champion_wape, challenger_version, challenger_wape, updated_at FROM fc_model_status ORDER BY kpi_id\n"
+   ]
+  },
+  {
+   "name": "ds_fva",
+   "displayName": "forecast vs actual",
+   "queryLines": [
+    "SELECT kpi_id, series_key, ds, sum(y_actual) AS actual, sum(yhat) AS forecast, sum(yhat_lo) AS forecast_lo, sum(yhat_hi) AS forecast_hi FROM fc_forecast_accuracy WHERE split = 'scored_vs_actual' GROUP BY kpi_id, series_key, ds\n"
+   ]
+  },
+  {
+   "name": "ds_wape_version",
+   "displayName": "wape by version",
+   "queryLines": [
+    "SELECT kpi_id, model_version, split, sum(abs_error) / nullif(sum(y_actual), 0) AS wape, count(*) AS points FROM fc_forecast_accuracy GROUP BY kpi_id, model_version, split ORDER BY kpi_id, model_version, split\n"
+   ]
+  },
+  {
+   "name": "ds_runs",
+   "displayName": "run log",
+   "queryLines": [
+    "SELECT started_at, kpi_id, model_family, model_version, cutoff, round(wape_backtest, 4) AS wape_backtest, round(wape_holdout, 4) AS wape_holdout, promotion_decision, promotion_reason, run_name, run_id FROM fc_model_runs ORDER BY started_at DESC\n"
+   ]
+  }
+ ],
+ "pages": [
+  {
+   "name": "overview",
+   "displayName": "Overview",
+   "layout": [
+    {
+     "widget": {
+      "name": "title_ov",
+      "multilineTextboxSpec": {
+       "lines": [
+        "## Forecast Factory: overview"
+       ]
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 1
+     }
+    },
+    {
+     "widget": {
+      "name": "k_active",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "ds_counters",
+         "fields": [
+          {
+           "name": "sum_active_kpis",
+           "expression": "SUM(`active_kpis`)"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "counter",
+       "frame": {
+        "showTitle": true,
+        "title": "Active KPIs"
+       },
+       "encodings": {
+        "value": {
+         "fieldName": "sum_active_kpis",
+         "displayName": "Active KPIs",
+         "format": {
+          "type": "number-plain",
+          "decimalPlaces": {
+           "type": "max",
+           "places": 0
+          }
+         }
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 1,
+      "width": 4,
+      "height": 3
+     }
+    },
+    {
+     "widget": {
+      "name": "k_champions",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "ds_counters",
+         "fields": [
+          {
+           "name": "sum_champion_models",
+           "expression": "SUM(`champion_models`)"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "counter",
+       "frame": {
+        "showTitle": true,
+        "title": "Champion models"
+       },
+       "encodings": {
+        "value": {
+         "fieldName": "sum_champion_models",
+         "displayName": "Champion models",
+         "format": {
+          "type": "number-plain",
+          "decimalPlaces": {
+           "type": "max",
+           "places": 0
+          }
+         }
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 4,
+      "y": 1,
+      "width": 4,
+      "height": 3
+     }
+    },
+    {
+     "widget": {
+      "name": "k_wape",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "ds_counters",
+         "fields": [
+          {
+           "name": "sum_scored_wape",
+           "expression": "SUM(`scored_wape`)"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "counter",
+       "frame": {
+        "showTitle": true,
+        "title": "Scored WAPE (all KPIs)"
+       },
+       "encodings": {
+        "value": {
+         "fieldName": "sum_scored_wape",
+         "displayName": "Scored WAPE (all KPIs)",
+         "format": {
+          "type": "number-plain",
+          "decimalPlaces": {
+           "type": "max",
+           "places": 1
+          }
+         }
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 8,
+      "y": 1,
+      "width": 4,
+      "height": 3
+     }
+    },
+    {
+     "widget": {
+      "name": "b_wape",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "ds_kpi_wape",
+         "fields": [
+          {
+           "name": "kpi_id",
+           "expression": "`kpi_id`"
+          },
+          {
+           "name": "split",
+           "expression": "`split`"
+          },
+          {
+           "name": "sum_wape",
+           "expression": "SUM(`wape`)"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "bar",
+       "frame": {
+        "showTitle": true,
+        "title": "WAPE by KPI: backtest vs holdout (lower is better)"
+       },
+       "encodings": {
+        "x": {
+         "fieldName": "kpi_id",
+         "scale": {
+          "type": "categorical"
+         },
+         "axis": {
+          "title": "KPI"
+         }
+        },
+        "y": {
+         "fieldName": "sum_wape",
+         "scale": {
+          "type": "quantitative"
+         },
+         "axis": {
+          "title": "WAPE"
+         }
+        },
+        "color": {
+         "fieldName": "split",
+         "scale": {
+          "type": "categorical"
+         }
+        }
+       },
+       "mark": {
+        "layout": "group"
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 4,
+      "width": 12,
+      "height": 6
+     }
+    },
+    {
+     "widget": {
+      "name": "t_status",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "ds_status",
+         "fields": [
+          {
+           "name": "kpi_id",
+           "expression": "`kpi_id`"
+          },
+          {
+           "name": "model_name",
+           "expression": "`model_name`"
+          },
+          {
+           "name": "champion_version",
+           "expression": "`champion_version`"
+          },
+          {
+           "name": "champion_wape",
+           "expression": "`champion_wape`"
+          },
+          {
+           "name": "challenger_version",
+           "expression": "`challenger_version`"
+          },
+          {
+           "name": "challenger_wape",
+           "expression": "`challenger_wape`"
+          },
+          {
+           "name": "updated_at",
+           "expression": "`updated_at`"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "table",
+       "frame": {
+        "showTitle": true,
+        "title": "Model registry status: champion and challenger per KPI"
+       },
+       "encodings": {
+        "columns": [
+         {
+          "fieldName": "kpi_id",
+          "displayName": "KPI"
+         },
+         {
+          "fieldName": "model_name",
+          "displayName": "UC model"
+         },
+         {
+          "fieldName": "champion_version",
+          "displayName": "Champion v"
+         },
+         {
+          "fieldName": "champion_wape",
+          "displayName": "Champion WAPE"
+         },
+         {
+          "fieldName": "challenger_version",
+          "displayName": "Challenger v"
+         },
+         {
+          "fieldName": "challenger_wape",
+          "displayName": "Challenger WAPE"
+         },
+         {
+          "fieldName": "updated_at",
+          "displayName": "Updated"
+         }
+        ]
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 10,
+      "width": 12,
+      "height": 6
+     }
+    }
+   ],
+   "pageType": "PAGE_TYPE_CANVAS"
+  },
+  {
+   "name": "fva",
+   "displayName": "Forecast vs actual",
+   "layout": [
+    {
+     "widget": {
+      "name": "title_fva",
+      "multilineTextboxSpec": {
+       "lines": [
+        "## Forecast vs actual (champion forecasts scored against the holdout)"
+       ]
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 1
+     }
+    },
+    {
+     "widget": {
+      "name": "flt_kpi",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "ds_fva",
+         "fields": [
+          {
+           "name": "kpi_id",
+           "expression": "`kpi_id`"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "filter-single-select",
+       "frame": {
+        "showTitle": true,
+        "title": "KPI (pick one; KPIs have different units and grains)"
+       },
+       "encodings": {
+        "fields": [
+         {
+          "fieldName": "kpi_id",
+          "displayName": "KPI",
+          "queryName": "main_query"
+         }
+        ]
+       },
+       "selection": {
+        "defaultSelection": {
+         "values": {
+          "dataType": "STRING",
+          "values": [
+           {
+            "value": "monthly_appointments"
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 1,
+      "width": 6,
+      "height": 2
+     }
+    },
+    {
+     "widget": {
+      "name": "flt_series",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "ds_fva",
+         "fields": [
+          {
+           "name": "series_key",
+           "expression": "`series_key`"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "filter-multi-select",
+       "frame": {
+        "showTitle": true,
+        "title": "Series (sum across series when none selected)"
+       },
+       "encodings": {
+        "fields": [
+         {
+          "fieldName": "series_key",
+          "displayName": "Series",
+          "queryName": "main_query"
+         }
+        ]
+       }
+      }
+     },
+     "position": {
+      "x": 6,
+      "y": 1,
+      "width": 6,
+      "height": 2
+     }
+    },
+    {
+     "widget": {
+      "name": "l_fva",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "ds_fva",
+         "fields": [
+          {
+           "name": "ds",
+           "expression": "`ds`"
+          },
+          {
+           "name": "sum_actual",
+           "expression": "SUM(`actual`)"
+          },
+          {
+           "name": "sum_forecast",
+           "expression": "SUM(`forecast`)"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 3,
+       "widgetType": "line",
+       "frame": {
+        "showTitle": true,
+        "title": "Actual vs forecast (holdout periods)"
+       },
+       "encodings": {
+        "x": {
+         "fieldName": "ds",
+         "scale": {
+          "type": "temporal"
+         },
+         "axis": {
+          "title": "Period"
+         }
+        },
+        "y": {
+         "scale": {
+          "type": "quantitative"
+         },
+         "axis": {
+          "title": "Units"
+         },
+         "fields": [
+          {
+           "fieldName": "sum_actual",
+           "displayName": "Actual"
+          },
+          {
+           "fieldName": "sum_forecast",
+           "displayName": "Forecast"
+          }
+         ]
+        }
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 3,
+      "width": 12,
+      "height": 8
+     }
+    },
+    {
+     "widget": {
+      "name": "t_wape_version",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "ds_wape_version",
+         "fields": [
+          {
+           "name": "kpi_id",
+           "expression": "`kpi_id`"
+          },
+          {
+           "name": "model_version",
+           "expression": "`model_version`"
+          },
+          {
+           "name": "split",
+           "expression": "`split`"
+          },
+          {
+           "name": "wape",
+           "expression": "`wape`"
+          },
+          {
+           "name": "points",
+           "expression": "`points`"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "table",
+       "frame": {
+        "showTitle": true,
+        "title": "WAPE by KPI and model version"
+       },
+       "encodings": {
+        "columns": [
+         {
+          "fieldName": "kpi_id",
+          "displayName": "KPI"
+         },
+         {
+          "fieldName": "model_version",
+          "displayName": "Model v"
+         },
+         {
+          "fieldName": "split",
+          "displayName": "Split"
+         },
+         {
+          "fieldName": "wape",
+          "displayName": "WAPE"
+         },
+         {
+          "fieldName": "points",
+          "displayName": "Points"
+         }
+        ]
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 11,
+      "width": 12,
+      "height": 6
+     }
+    }
+   ],
+   "pageType": "PAGE_TYPE_CANVAS"
+  },
+  {
+   "name": "runs",
+   "displayName": "Run log",
+   "layout": [
+    {
+     "widget": {
+      "name": "title_runs",
+      "multilineTextboxSpec": {
+       "lines": [
+        "## Run log: every KPI run, promotion decision and reason"
+       ]
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 1
+     }
+    },
+    {
+     "widget": {
+      "name": "t_runs",
+      "queries": [
+       {
+        "name": "main_query",
+        "query": {
+         "datasetName": "ds_runs",
+         "fields": [
+          {
+           "name": "started_at",
+           "expression": "`started_at`"
+          },
+          {
+           "name": "run_name",
+           "expression": "`run_name`"
+          },
+          {
+           "name": "kpi_id",
+           "expression": "`kpi_id`"
+          },
+          {
+           "name": "model_family",
+           "expression": "`model_family`"
+          },
+          {
+           "name": "model_version",
+           "expression": "`model_version`"
+          },
+          {
+           "name": "cutoff",
+           "expression": "`cutoff`"
+          },
+          {
+           "name": "wape_backtest",
+           "expression": "`wape_backtest`"
+          },
+          {
+           "name": "wape_holdout",
+           "expression": "`wape_holdout`"
+          },
+          {
+           "name": "promotion_decision",
+           "expression": "`promotion_decision`"
+          },
+          {
+           "name": "promotion_reason",
+           "expression": "`promotion_reason`"
+          },
+          {
+           "name": "run_id",
+           "expression": "`run_id`"
+          }
+         ],
+         "disaggregated": false
+        }
+       }
+      ],
+      "spec": {
+       "version": 2,
+       "widgetType": "table",
+       "frame": {
+        "showTitle": true,
+        "title": "MLflow run log (fc_model_runs)"
+       },
+       "encodings": {
+        "columns": [
+         {
+          "fieldName": "started_at",
+          "displayName": "Started"
+         },
+         {
+          "fieldName": "run_name",
+          "displayName": "Run"
+         },
+         {
+          "fieldName": "kpi_id",
+          "displayName": "KPI"
+         },
+         {
+          "fieldName": "model_family",
+          "displayName": "Family"
+         },
+         {
+          "fieldName": "model_version",
+          "displayName": "Version"
+         },
+         {
+          "fieldName": "cutoff",
+          "displayName": "Cutoff"
+         },
+         {
+          "fieldName": "wape_backtest",
+          "displayName": "WAPE backtest"
+         },
+         {
+          "fieldName": "wape_holdout",
+          "displayName": "WAPE holdout"
+         },
+         {
+          "fieldName": "promotion_decision",
+          "displayName": "Decision"
+         },
+         {
+          "fieldName": "promotion_reason",
+          "displayName": "Reason"
+         },
+         {
+          "fieldName": "run_id",
+          "displayName": "MLflow run"
+         }
+        ]
+       }
+      }
+     },
+     "position": {
+      "x": 0,
+      "y": 1,
+      "width": 12,
+      "height": 12
+     }
+    }
+   ],
+   "pageType": "PAGE_TYPE_CANVAS"
+  }
+ ]
+}
