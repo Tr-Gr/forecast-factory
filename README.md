@@ -92,7 +92,7 @@ Because models train on sensitive data, the code moves between environments and 
 1. Create a service principal for each of staging and prod, and grant it the catalog privileges above plus permission to use serverless jobs.
 2. In `databricks.yml`, set `workspace.host`, `catalog` and `warehouse_id` for `staging` and `prod`.
 3. In GitHub, create `staging` and `prod` environments. In each, add the variable `DATABRICKS_HOST` and the secrets `DATABRICKS_CLIENT_ID` and `DATABRICKS_CLIENT_SECRET` (an OAuth secret for that service principal). Add required reviewers to `prod`.
-4. Pull requests run `validate.yml`. Merging to `main` deploys to staging and runs setup. Run `deploy.yml` manually with `target = prod` to promote.
+4. The workflows skip themselves until `DATABRICKS_HOST` is set, so nothing runs before you configure them. Pull requests run `validate.yml`. Merging to `main` deploys to staging and runs setup. Run `deploy.yml` manually with `target = prod` to promote.
 
 ## Monitoring and retraining
 

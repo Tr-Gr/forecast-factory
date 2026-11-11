@@ -16,6 +16,8 @@ on:
 
 jobs:
   deploy:
+    # Skip until the repo is configured (set the DATABRICKS_HOST variable on the environment or repo).
+    if: ${{ vars.DATABRICKS_HOST != '' }}
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'staging' }}
     env:
